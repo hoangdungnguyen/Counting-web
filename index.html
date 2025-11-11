@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Tap Counter — Single & Triple Tic</title>
+  <title>Tap Counter — Single & Triple Tic (Fixed Touch)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <style>
     :root { --bg:#0f172a; --fg:#e5e7eb; --bd:#334155; --card:#111827; --accent:#60a5fa; }
@@ -39,6 +39,7 @@
   <script>
     let count = 0, x = 10, y = 25;
     let ctx = null;
+    let lastTapTime = 0; // debounce
 
     const elCount = document.getElementById('count');
     const elPad = document.getElementById('pad');
@@ -87,15 +88,21 @@
       else if (count % x === 0) tic(1);
     }
 
-    elPad.addEventListener('touchstart', ()=>{count++;update();},{passive:true});
-    elPad.addEventListener('click', ()=>{count++;update();});
-    document.getElementById('reset').onclick=()=>{count=0;elCount.textContent=0;};
-    document.getElementById('change').onclick=askValues;
+    function handleTap() {
+      const now = Date.now();
+      if (now - lastTapTime < 150) return; // ignore double events within 150ms
+      lastTapTime = now;
+      count++;
+      update();
+    }
 
-    // init
-    x=parseInt(localStorage.getItem('ticX')||10,10);
-    y=parseInt(localStorage.getItem('ticY')||25,10);
-    elX.textContent=x; elY.textContent=y;
-  </script>
-</body>
-</html>
+    // Detect platform: mobile or desktop
+    const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (isTouch) {
+      elPad.addEventListener('touchstart', handleTap, { passive: true });
+    } else {
+      elPad.addEventListener('click', handleTap);
+    }
+
+    document.getElementById('reset').onclick=()=>{count=0;elCount.textContent=0;};
+    document.getElementById('change').onclick=
