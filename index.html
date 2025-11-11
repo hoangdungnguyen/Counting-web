@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Tap Counter — Single & Triple Tic (Fixed Touch)</title>
+  <title>Tap Counter — Triple at Offset</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <style>
     :root { --bg:#0f172a; --fg:#e5e7eb; --bd:#334155; --card:#111827; --accent:#60a5fa; }
@@ -13,9 +13,9 @@
     .btn{appearance:none;border:1px solid var(--bd);background:var(--card);color:var(--fg);padding:8px 10px;border-radius:10px;cursor:pointer;}
     .tap{flex:1;display:flex;align-items:center;justify-content:center;border:2px dashed var(--bd);border-radius:16px;user-select:none;-webkit-user-select:none;touch-action:manipulation;}
     .count{font-size:96px;line-height:1;}
-    .hint{text-align:center;opacity:.75;font-size:14px;}
-    .pill{padding:6px 10px;border-radius:999px;background:var(--card);border:1px solid var(--bd);font-variant-numeric:tabular-nums;}
+    .hint{text-align:center;opacity:.8;font-size:14px;}
     .accent{color:var(--accent);}
+    .pill{padding:6px 10px;border-radius:999px;background:var(--card);border:1px solid var(--bd);font-variant-numeric:tabular-nums;}
   </style>
 </head>
 <body>
@@ -23,7 +23,8 @@
     <header>
       <h1>Tap Counter</h1>
       <div>
-        <button class="btn" id="change">Change X / Y</button>
+        <span class="pill">Triple when <span class="accent" id="offsetLabel">2</span> (mod <span class="accent" id="yLabel">3</span>)</span>
+        <button class="btn" id="change">Change Mod/Offset</button>
         <button class="btn" id="reset">Reset</button>
       </div>
     </header>
@@ -31,20 +32,24 @@
     <div class="tap" id="pad"><div class="count" id="count">0</div></div>
 
     <div class="hint">
-      Single tic → multiple of <span class="accent" id="xLabel">x</span><br>
-      Triple tic → multiple of <span class="accent" id="yLabel">y</span>
+      • 1 tic on every tap<br>
+      • 3 tics when count is ≡ <span class="accent" id="offsetLabel2">2</span> (mod <span class="accent" id="yLabel2">3</span>) — e.g., 2, 5, 8…
     </div>
   </div>
 
   <script>
-    let count = 0, x = 10, y = 25;
+    let count = 0;
+    let y = 3;          // modulo
+    let offset = 2;     // triple when nextCount % y == offset
     let ctx = null;
     let lastTapTime = 0; // debounce
 
     const elCount = document.getElementById('count');
     const elPad = document.getElementById('pad');
-    const elX = document.getElementById('xLabel');
     const elY = document.getElementById('yLabel');
+    const elY2 = document.getElementById('yLabel2');
+    const elOff = document.getElementById('offsetLabel');
+    const elOff2 = document.getElementById('offsetLabel2');
 
     function ensureAudio() {
       if (ctx) return;
@@ -52,13 +57,13 @@
       ctx = new AC();
     }
 
-    function beep(delay=0, freq=880, dur=80) {
+    function beep(delay=0, freq=880, dur=80, gainLevel=0.2) {
       if (!ctx) return;
       const osc = ctx.createOscillator(), g = ctx.createGain();
       const start = ctx.currentTime + delay;
       const end = start + dur/1000;
       g.gain.setValueAtTime(0.0001, start);
-      g.gain.linearRampToValueAtTime(0.2, start + 0.01);
+      g.gain.linearRampToValueAtTime(gainLevel, start + 0.01);
       g.gain.exponentialRampToValueAtTime(0.0001, end);
       osc.type = 'sine';
       osc.frequency.value = freq;
@@ -67,42 +72,66 @@
       osc.stop(end);
     }
 
-    function tic(n=1) {
+    function ticSingle() {
       ensureAudio();
-      for(let i=0;i<n;i++) beep(i*0.12, 880, 80);
-      if (navigator.vibrate) navigator.vibrate(n>1? [60,40,60,40,60]:30);
+      beep(0, 820, 70, 0.2);
+      if (navigator.vibrate) navigator.vibrate(15);
     }
 
-    function askValues() {
-      let vx = parseInt(prompt("Enter X (single tic every multiple):", x) || x);
-      let vy = parseInt(prompt("Enter Y (triple tic every multiple):", y) || y);
-      if(vx>0) x=vx; if(vy>0) y=vy;
-      localStorage.setItem('ticX',x);
-      localStorage.setItem('ticY',y);
-      elX.textContent=x; elY.textContent=y;
+    function ticTriple() {
+      ensureAudio();
+      // three quick beeps, slightly higher pitch to distinguish
+      beep(0.00, 1000, 70, 0.22);
+      beep(0.12, 1000, 70, 0.22);
+      beep(0.24, 1000, 70, 0.22);
+      if (navigator.vibrate) navigator.vibrate([50,40,50,40,50]);
     }
 
-    function update() {
-      elCount.textContent = count;
-      if (count % y === 0) tic(3);
-      else if (count % x === 0) tic(1);
+    function updateLabels() {
+      elY.textContent = y; elY2.textContent = y;
+      elOff.textContent = offset; elOff2.textContent = offset;
     }
 
     function handleTap() {
       const now = Date.now();
-      if (now - lastTapTime < 150) return; // ignore double events within 150ms
+      if (now - lastTapTime < 150) return; // debounce accidental multi-taps
       lastTapTime = now;
-      count++;
-      update();
+
+      const next = count + 1;
+
+      // 3 tics if next ≡ offset (mod y), else 1 tic.
+      if (y > 0 && next % y === (offset % y + y) % y) {
+        ticTriple();
+      } else {
+        ticSingle();
+      }
+
+      count = next;
+      elCount.textContent = count;
     }
 
-    // Detect platform: mobile or desktop
+    // Input mode selection: touch on mobile, click on desktop
     const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    if (isTouch) {
-      elPad.addEventListener('touchstart', handleTap, { passive: true });
-    } else {
-      elPad.addEventListener('click', handleTap);
-    }
+    if (isTouch) elPad.addEventListener('touchstart', handleTap, { passive: true });
+    else elPad.addEventListener('click', handleTap);
 
-    document.getElementById('reset').onclick=()=>{count=0;elCount.textContent=0;};
-    document.getElementById('change').onclick=
+    document.getElementById('reset').onclick = () => { count = 0; elCount.textContent = 0; };
+    document.getElementById('change').onclick = () => {
+      const yIn = parseInt(prompt("Modulo y (positive integer):", y) || y, 10);
+      const offIn = parseInt(prompt("Offset r (0 ≤ r < y): triple when count ≡ r (mod y)", offset) || offset, 10);
+      if (Number.isFinite(yIn) && yIn > 0) y = yIn;
+      if (Number.isFinite(offIn)) offset = ((offIn % y) + y) % y; // normalize to [0, y-1]
+      localStorage.setItem('tap_mod_y', y);
+      localStorage.setItem('tap_offset_r', offset);
+      updateLabels();
+    };
+
+    // init from storage
+    const ySaved = parseInt(localStorage.getItem('tap_mod_y') || '3', 10);
+    const offSaved = parseInt(localStorage.getItem('tap_offset_r') || '2', 10);
+    if (Number.isFinite(ySaved) && ySaved > 0) y = ySaved;
+    if (Number.isFinite(offSaved)) offset = ((offSaved % y) + y) % y;
+    updateLabels();
+  </script>
+</body>
+</html>
