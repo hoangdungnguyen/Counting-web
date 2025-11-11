@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tap Counter — Tic on Multiples of X</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <style>
+    :root { --bg:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --bd:#334155; --card:#111827; --accent:#60a5fa; }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial; }
+    body { background: var(--bg); color: var(--fg); }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; height: 100%; display: flex; flex-direction: column; gap: 12px; }
+    header { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    h1 { font-size: 18px; margin: 0; opacity: .9; }
+    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      appearance: none; border: 1px solid var(--bd); background: var(--card); color: var(--fg);
+      padding: 8px 10px; border-radius: 10px; cursor: pointer; font-size: 14px;
+    }
+    .btn:active { transform: translateY(1px); }
+    .pill { padding: 6px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--bd); font-variant-numeric: tabular-nums; }
+    .tap-area {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      border: 2px dashed var(--bd); border-radius: 16px; user-select: none; -webkit-user-select: none;
+      touch-action: manipulation; position: relative;
+    }
+    .count { font-size: 96px; line-height: 1; letter-spacing: .03em; }
+    .hint { text-align: center; opacity: .75; font-size: 14px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .xval { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Tap Counter</h1>
+      <div class="controls">
+        <span class="pill">Tic every <span class="xval" id="xLabel">—</span> taps</span>
+        <button class="btn" id="changeX">Change X</button>
+        <button class="btn" id="reset">Reset</button>
+      </div>
+    </header>
+
+    <div class="tap-area" id="tapArea" aria-label="Tap area">
+      <div class="count" id="count">0</div>
+    </div>
+
+    <div class="row">
+      <div class="hint">Tap anywhere inside the box. A short “tic” plays on multiples of <span class="xval" id="xLabel2">—</span>.</div>
+      <div class="pill">Total: <span id="total">0</span></div>
+    </div>
+  </div>
+
+  <script>
+    // --- State ---
+    let count = 0;
+    let x = 10;
+    let audioCtx = null;
+
+    const elCount = document.getElementById('count');
+    const elTotal = document.getElementById('total');
+    const elTap  = document.getElementById('tapArea');
+    const elX1   = document.getElementById('xLabel');
+    const elX2   = document.getElementById('xLabel2');
+
+    // --- Audio ---
+    function ensureAudio() {
+      if (audioCtx) return;
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      try { audioCtx = new Ctx(); } catch (e) { /* ignore */ }
+    }
+
+    function tic(durationMs = 70, freq = 880) {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const now = audioCtx.currentTime;
+      const dur = durationMs / 1000;
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.18, now + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + dur);
+    }
+
+    // --- Helpers ---
+    function askForX(initial = true) {
+      let promptText = initial
+        ? "Enter a positive integer X.\nThe app will play a 'tic' whenever the tap count is divisible by X."
+        : "Change X (positive integer):";
+      let v = window.prompt(promptText, String(x));
+      if (v === null) return; // cancelled
+      v = parseInt(v, 10);
+      if (!Number.isFinite(v) || v < 1) {
+        alert("Please enter a positive integer.");
+        return askForX(false);
+      }
+      x = v;
+      localStorage.setItem('tapcounter_x', String(x));
+      updateLabels();
+    }
+
+    function updateLabels() {
+      elX1.textContent = x;
+      elX2.textContent = x;
+    }
+
+    function updateCount() {
+      elCount.textContent = count;
+      elTotal.textContent = count;
+      if (x > 0 && count % x === 0) {
+        // optional haptic on supported devices
+        if (navigator.vibrate) navigator.vibrate(10);
+        tic();
+      }
+    }
+
+    // --- Tap handling with touch/click de-dupe ---
+    let lastTouchTime = 0;
+    function bump(from) {
+      const now = Date.now();
+      if (from === 'click' && now - lastTouchTime < 450) return;
+      if (from === 'touch') lastTouchTime = now;
+
+      ensureAudio();
+      count += 1;
+      updateCount();
+    }
+
+    elTap.addEventListener('touchstart', () => bump('touch'), { passive: true });
+    elTap.addEventListener('click', () => bump('click'));
+
+    // --- Buttons ---
+    document.getElementById('reset').addEventListener('click', () => { count = 0; updateCount(); });
+    document.getElementById('changeX').addEventListener('click', () => askForX(false));
+
+    // --- Init: ask for X at the beginning ---
+    (function init() {
+      const saved = parseInt(localStorage.getItem('tapcounter_x') || '0', 10);
+      if (Number.isFinite(saved) && saved > 0) {
+        x = saved;
+      }
+      updateLabels();
+      // Always prompt once when first loading (as requested)
+      if (!saved) askForX(true);
+    })();
+  </script>
+</body>
+</html>
