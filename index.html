@@ -2,154 +2,100 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Tap Counter — Tic on Multiples of X</title>
+  <title>Tap Counter — Single & Triple Tic</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <meta name="theme-color" content="#0f172a" />
   <style>
-    :root { --bg:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --bd:#334155; --card:#111827; --accent:#60a5fa; }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial; }
-    body { background: var(--bg); color: var(--fg); }
-    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; height: 100%; display: flex; flex-direction: column; gap: 12px; }
-    header { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-    h1 { font-size: 18px; margin: 0; opacity: .9; }
-    .controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .btn {
-      appearance: none; border: 1px solid var(--bd); background: var(--card); color: var(--fg);
-      padding: 8px 10px; border-radius: 10px; cursor: pointer; font-size: 14px;
-    }
-    .btn:active { transform: translateY(1px); }
-    .pill { padding: 6px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--bd); font-variant-numeric: tabular-nums; }
-    .tap-area {
-      flex: 1; display: flex; align-items: center; justify-content: center;
-      border: 2px dashed var(--bd); border-radius: 16px; user-select: none; -webkit-user-select: none;
-      touch-action: manipulation; position: relative;
-    }
-    .count { font-size: 96px; line-height: 1; letter-spacing: .03em; }
-    .hint { text-align: center; opacity: .75; font-size: 14px; }
-    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .xval { color: var(--accent); }
+    :root { --bg:#0f172a; --fg:#e5e7eb; --bd:#334155; --card:#111827; --accent:#60a5fa; }
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial;background:var(--bg);color:var(--fg);}
+    .wrap{max-width:720px;margin:0 auto;padding:16px;height:100%;display:flex;flex-direction:column;gap:12px;}
+    header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+    h1{font-size:18px;margin:0;opacity:.9;}
+    .btn{appearance:none;border:1px solid var(--bd);background:var(--card);color:var(--fg);padding:8px 10px;border-radius:10px;cursor:pointer;}
+    .tap{flex:1;display:flex;align-items:center;justify-content:center;border:2px dashed var(--bd);border-radius:16px;user-select:none;-webkit-user-select:none;touch-action:manipulation;}
+    .count{font-size:96px;line-height:1;}
+    .hint{text-align:center;opacity:.75;font-size:14px;}
+    .pill{padding:6px 10px;border-radius:999px;background:var(--card);border:1px solid var(--bd);font-variant-numeric:tabular-nums;}
+    .accent{color:var(--accent);}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1>Tap Counter</h1>
-      <div class="controls">
-        <span class="pill">Tic every <span class="xval" id="xLabel">—</span> taps</span>
-        <button class="btn" id="changeX">Change X</button>
+      <div>
+        <button class="btn" id="change">Change X / Y</button>
         <button class="btn" id="reset">Reset</button>
       </div>
     </header>
 
-    <div class="tap-area" id="tapArea" aria-label="Tap area">
-      <div class="count" id="count">0</div>
-    </div>
+    <div class="tap" id="pad"><div class="count" id="count">0</div></div>
 
-    <div class="row">
-      <div class="hint">Tap anywhere inside the box. A short “tic” plays on multiples of <span class="xval" id="xLabel2">—</span>.</div>
-      <div class="pill">Total: <span id="total">0</span></div>
+    <div class="hint">
+      Single tic → multiple of <span class="accent" id="xLabel">x</span><br>
+      Triple tic → multiple of <span class="accent" id="yLabel">y</span>
     </div>
   </div>
 
   <script>
-    // --- State ---
-    let count = 0;
-    let x = 10;
-    let audioCtx = null;
+    let count = 0, x = 10, y = 25;
+    let ctx = null;
 
     const elCount = document.getElementById('count');
-    const elTotal = document.getElementById('total');
-    const elTap  = document.getElementById('tapArea');
-    const elX1   = document.getElementById('xLabel');
-    const elX2   = document.getElementById('xLabel2');
+    const elPad = document.getElementById('pad');
+    const elX = document.getElementById('xLabel');
+    const elY = document.getElementById('yLabel');
 
-    // --- Audio ---
     function ensureAudio() {
-      if (audioCtx) return;
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      try { audioCtx = new Ctx(); } catch (e) { /* ignore */ }
+      if (ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC();
     }
 
-    function tic(durationMs = 70, freq = 880) {
-      if (!audioCtx) return;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      const now = audioCtx.currentTime;
-      const dur = durationMs / 1000;
-
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.linearRampToValueAtTime(0.18, now + 0.008);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-
+    function beep(delay=0, freq=880, dur=80) {
+      if (!ctx) return;
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      const start = ctx.currentTime + delay;
+      const end = start + dur/1000;
+      g.gain.setValueAtTime(0.0001, start);
+      g.gain.linearRampToValueAtTime(0.2, start + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, end);
       osc.type = 'sine';
       osc.frequency.value = freq;
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start(now);
-      osc.stop(now + dur);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(end);
     }
 
-    // --- Helpers ---
-    function askForX(initial = true) {
-      let promptText = initial
-        ? "Enter a positive integer X.\nThe app will play a 'tic' whenever the tap count is divisible by X."
-        : "Change X (positive integer):";
-      let v = window.prompt(promptText, String(x));
-      if (v === null) return; // cancelled
-      v = parseInt(v, 10);
-      if (!Number.isFinite(v) || v < 1) {
-        alert("Please enter a positive integer.");
-        return askForX(false);
-      }
-      x = v;
-      localStorage.setItem('tapcounter_x', String(x));
-      updateLabels();
-    }
-
-    function updateLabels() {
-      elX1.textContent = x;
-      elX2.textContent = x;
-    }
-
-    function updateCount() {
-      elCount.textContent = count;
-      elTotal.textContent = count;
-      if (x > 0 && count % x === 0) {
-        // optional haptic on supported devices
-        if (navigator.vibrate) navigator.vibrate(10);
-        tic();
-      }
-    }
-
-    // --- Tap handling with touch/click de-dupe ---
-    let lastTouchTime = 0;
-    function bump(from) {
-      const now = Date.now();
-      if (from === 'click' && now - lastTouchTime < 450) return;
-      if (from === 'touch') lastTouchTime = now;
-
+    function tic(n=1) {
       ensureAudio();
-      count += 1;
-      updateCount();
+      for(let i=0;i<n;i++) beep(i*0.12, 880, 80);
+      if (navigator.vibrate) navigator.vibrate(n>1? [60,40,60,40,60]:30);
     }
 
-    elTap.addEventListener('touchstart', () => bump('touch'), { passive: true });
-    elTap.addEventListener('click', () => bump('click'));
+    function askValues() {
+      let vx = parseInt(prompt("Enter X (single tic every multiple):", x) || x);
+      let vy = parseInt(prompt("Enter Y (triple tic every multiple):", y) || y);
+      if(vx>0) x=vx; if(vy>0) y=vy;
+      localStorage.setItem('ticX',x);
+      localStorage.setItem('ticY',y);
+      elX.textContent=x; elY.textContent=y;
+    }
 
-    // --- Buttons ---
-    document.getElementById('reset').addEventListener('click', () => { count = 0; updateCount(); });
-    document.getElementById('changeX').addEventListener('click', () => askForX(false));
+    function update() {
+      elCount.textContent = count;
+      if (count % y === 0) tic(3);
+      else if (count % x === 0) tic(1);
+    }
 
-    // --- Init: ask for X at the beginning ---
-    (function init() {
-      const saved = parseInt(localStorage.getItem('tapcounter_x') || '0', 10);
-      if (Number.isFinite(saved) && saved > 0) {
-        x = saved;
-      }
-      updateLabels();
-      // Always prompt once when first loading (as requested)
-      if (!saved) askForX(true);
-    })();
+    elPad.addEventListener('touchstart', ()=>{count++;update();},{passive:true});
+    elPad.addEventListener('click', ()=>{count++;update();});
+    document.getElementById('reset').onclick=()=>{count=0;elCount.textContent=0;};
+    document.getElementById('change').onclick=askValues;
+
+    // init
+    x=parseInt(localStorage.getItem('ticX')||10,10);
+    y=parseInt(localStorage.getItem('ticY')||25,10);
+    elX.textContent=x; elY.textContent=y;
   </script>
 </body>
 </html>
